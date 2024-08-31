@@ -1,0 +1,61 @@
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Activation
+from tensorflow.keras.utils import to_categorical
+from music21 import converter, instrument, note, chord, stream
+
+# Load notes from file
+with open("notes.txt", "r") as f:
+    lines = f.readlines()
+    notes = [note.strip() for line in lines for note in line.split()]
+
+# Get all pitch names
+pitches = sorted(set(notes))
+
+# Create a dictionary to map pitches to integers
+pitch_to_int = {pitch: number for number, pitch in enumerate(pitches)}
+
+# Prepare the sequences used by the Neural Network
+sequence_length = 100
+network_input = []
+network_output = []
+
+for i in range(0, len(notes) - sequence_length):
+    sequence_in = notes[i:i + sequence_length]
+    sequence_out = notes[i + sequence_length]
+    network_input.append([pitch_to_int[char] for char in sequence_in])
+    network_output.append(pitch_to_int[sequence_out])
+
+n_patterns = len(network_input)
+
+# Reshape the input into a format compatible with LSTM layers
+network_input = np.reshape(network_input, (n_patterns, sequence_length, 1))
+network_input = network_input / float(len(pitches))
+
+# One-hot encode the output
+network_output = to_categorical(network_output)
+
+# Build the model
+model = Sequential()
+model.add(LSTM(
+    256,
+    input_shape=(network_input.shape[1], network_input.shape[2]),
+    return_sequences=True
+))
+model.add(Dropout(0.3))
+model.add(LSTM(512, return_sequences=True))
+model.add(Dropout(0.3))
+model.add(LSTM(256))
+model.add(Dense(256))
+model.add(Dropout(0.3))
+model.add(Dense(len(pitches)))
+model.add(Activation('softmax'))
+
+model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
+
+# Train the model
+model.fit(network_input, network_output, epochs=20, batch_size=64)
+
+# Save the model
+model.save("music_model.h5")
